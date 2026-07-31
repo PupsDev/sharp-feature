@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
     coolMeshName = polyscope::guessNiceNameFromPath(filePath);
     //openMesh(filePath);
 
-    std::string testPath("D://Thesis//Ange//SharpFeatureRelease//test_data//corner_cube.obj");
+    std::string testPath("D://Thesis//Ange//SharpFeatureRelease//test_data//cube.obj");
 
     openMesh(testPath);
     filePath = testPath;
