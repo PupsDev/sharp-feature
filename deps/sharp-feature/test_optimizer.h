@@ -569,7 +569,7 @@ namespace test_graph_optimizer
         size_t i = 0;
         for(auto f : surfaceMesh.faces())
         {
-            if(f.id() != 6 )continue;
+            if(f.id() != 0 )continue;
             auto centroid = computeCentroid(f);
             SurfaceOptimizer optimizer2(surfaceMesh);
             optimizer2.parameters.deltaXY = 0.1;
@@ -579,8 +579,10 @@ namespace test_graph_optimizer
             auto pclDirections = polyscope::registerPointCloud("directions_"+std::to_string(i),  optimizer2.directions);
             pclDirections->resetTransform();
 
-            auto pclDirections2 = polyscope::registerPointCloud("gradients"+std::to_string(i),  optimizer2.gradients);
+            auto pclDirections2 = polyscope::registerPointCloud("gradients"+std::to_string(i),  optimizer2.debugPath);
+            pclDirections2->addVectorQuantity("normals", optimizer2.debugNormal);
             pclDirections2->resetTransform();
+
             i++;
         }
         //display();

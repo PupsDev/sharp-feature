@@ -248,6 +248,9 @@ public:
             double distanceToIntersection = std::sqrt(CGAL::squared_length(intersectionPoint - currentStart));
             Vector direction3D = computeDirection3D(intersectionPoint, currentTarget, initialNormal, nextNormal);
 
+            debugPath.push_back(intersectionPoint);
+            debugNormal.push_back(direction3D);
+
             if( debug )
             {
                 debugPath.push_back(intersectionPoint);
@@ -478,7 +481,8 @@ public:
 
         int iteration = 0;
         debug_steps.clear();
-        while (iteration < max_iteration && std::sqrt(CGAL::squared_length(targetPoint-inputPoint)) > 10e-3) {
+        float distance  = std::sqrt(CGAL::squared_length(targetPoint-inputPoint));
+        while (iteration < max_iteration &&  distance> 10e-3) {
 
             auto uv = computeUV(surfaceMesh, inputPoint, inputFace);
 
@@ -497,7 +501,8 @@ public:
                 Mesh::Face_index outFace;
                 Point target;
                 moveOnSurface(inputFace, uv, delta-CGAL::ORIGIN, target, outFace);
-                gradients.push_back(target);
+                if(iteration > 10 && iteration < 12)
+                    gradients.push_back(target);
                 return evaluate(targetPoint, target);
             };
             K::Vector_2 gradient = K::Vector_2(
@@ -510,6 +515,7 @@ public:
             if(gradient_step_sq_len > parameters.deltaXY)
                 gradient = parameters.deltaXY / gradient_step_sq_len * gradient;
 
+
             auto pointCandidate = computeXYZ(surfaceMesh, uv+gradient, inputFace);
             Mesh::Face_index outFace;
             auto totalDistance = std::sqrt(CGAL::squared_length(pointCandidate- inputPoint));
@@ -519,11 +525,19 @@ public:
                           outFace,
                           totalDistance);
 
+            if(distance < 0.1)
+            {
+                if(barycentricCoordinates(surfaceMesh, inputFace, targetPoint))
+                {
+                    pointCandidate = targetPoint;
+                }
+            }
 
 
             inputPoint = pointCandidate;
             inputFace = outFace;
             std::cout<<"iteration "<<iteration << " dist "<<std::sqrt(CGAL::squared_length(targetPoint-inputPoint))<<"\n";
+            distance  = std::sqrt(CGAL::squared_length(targetPoint-inputPoint));
             directions.push_back(pointCandidate);
             iteration++;
             parameters.deltaXY = std::max(0.0001 , parameters.deltaXY*0.99);
