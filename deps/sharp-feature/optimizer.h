@@ -10,8 +10,8 @@
 
 struct OptimizerParameters
 {
-    float lineQuadricWeight = 0.001f;
-    float deltaXY = 0.025f;
+    float lineQuadricWeight = 0.01f;
+    float deltaXY = 0.1f;
 
 
 };

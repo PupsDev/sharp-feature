@@ -1,5 +1,7 @@
 #include "sharp_feature.h"
 #include "test_optimizer.h"
+#include "polyscope/combining_hash_functions.h"
+
 namespace sharp_feature
 {
 
@@ -30,6 +32,7 @@ namespace sharp_feature
             polyGroup = polyscope::getGroup("PolyLines"+ name);
         }
 
+        std::vector<int> pointID(polylines.points.size(),0);
         size_t polyLineID = 0;
         for (const auto& polyline : polylines.lines)
         {
@@ -50,12 +53,14 @@ namespace sharp_feature
                                 });
             }
 
-            auto curveSimplified = polyscope::registerCurveNetwork("polyline_"+std::to_string(polyLineID),   points, edges);
+            auto curveSimplified = polyscope::registerCurveNetwork(name+"polyline_"+std::to_string(polyLineID),   points, edges);
             curveSimplified->resetTransform();
             curveSimplified->setRadius(sharpFeature.sharpFeatureParameters.sizeLine);
             curveSimplified->addToGroup(*polyGroup);
             polyLineID++;
         }
+        auto pcl = polyscope::registerPointCloud("polylines_points_"+name, polylines.points);
+        pcl->resetTransform();
 
         // use polylines.points directly
 
@@ -133,6 +138,7 @@ namespace sharp_feature
               {
                   featureGraphParameters.setThreshold(selectionThreshold);
               }
+              ImGui::InputInt("maxIteration", &sharpFeature.sharpFeatureParameters.maxIteration);
               if (ImGui::CollapsingHeader("Sharp Feature Display Parameters", ImGuiTreeNodeFlags_DefaultOpen))
               {
                   ImGui::Checkbox("Display Points", &sharpFeature.sharpFeatureParameters.displayPoints);
@@ -159,7 +165,7 @@ namespace sharp_feature
               {
                   sharpFeature.computePolyLines();
 
-                  display(sharpFeature.persistentValues.polylines);
+                  //display(sharpFeature.persistentValues.polylines);
               }
 
               ImGui::TreePop();
@@ -176,6 +182,30 @@ namespace sharp_feature
                   polyscope::getSurfaceMesh(coolMeshName)->addVertexScalarQuantity("degree", vec);
                   auto pcl = polyscope::registerPointCloud("optimal", sharpFeature.getOptimal());
                   pcl->resetTransform();
+                  std::vector<int> edgeOrdering;
+                  std::unordered_set<std::pair<size_t, size_t>, polyscope::hash_combine::hash<std::pair<size_t, size_t>>> seenEdges;
+
+                  for(auto f : surfaceMesh.faces())
+                  {
+                      for(auto h : surfaceMesh.halfedges_around_face(surfaceMesh.halfedge(f)))
+                      {
+                          auto i0 = surfaceMesh.source(h).idx();
+                          auto i1 = surfaceMesh.target(h).idx();
+
+                          size_t iMin = std::min(i0, i1);
+                          size_t iMax = std::max(i0, i1);
+                          auto p = std::make_pair(iMin, iMax);
+                          if (seenEdges.find(p) == seenEdges.end()) {
+                              edgeOrdering.push_back(edgeOrdering.size());
+                              seenEdges.insert(p);
+                          }
+                      }
+                  }
+
+
+                  if(polyscope::getSurfaceMesh(coolMeshName)->edgePerm.empty())
+                      polyscope::getSurfaceMesh(coolMeshName)->setEdgePermutation(edgeOrdering);
+                  polyscope::getSurfaceMesh(coolMeshName)->addEdgeScalarQuantity("line", sharpFeature.persistentValues.edgeScalar);
 
                   bool displayPlanes = false;
                   if(displayPlanes)
@@ -204,7 +234,13 @@ namespace sharp_feature
 
                   }
 
+                  sharpFeature.noisePolyLines();
+                  display(sharpFeature.persistentValues.polylines, "_beforeOpti");
                   sharpFeature.optimizePolyLines();
+
+
+                  /*sharpFeature.computeFacePatches();
+                  sharpFeature.optimizePolyLines();*/
                   display(sharpFeature.persistentValues.polylines, "_afterOpti");
 
               }

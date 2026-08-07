@@ -1,7 +1,8 @@
 #pragma once
 #include "type.h"
 #include <queue>
-#include "optimizer.h"
+//#include "optimizer.h"
+#include "surface_optimizer.h"
 // AABB
 #include <CGAL/AABB_tree.h>
 #include <CGAL/AABB_face_graph_triangle_primitive.h>
@@ -173,7 +174,8 @@ namespace sharp_feature
                 for (auto h : vec) {
                     halfEdgeFrontier[h.idx()] = 1;
                     auto e = surfaceMesh.edge(h);
-                    edgeFrontiers[e.idx()] = 1.0;
+                    //edgeFrontiers[e.idx()] = 1.0;
+                    edgeFrontiers[e.idx()] = edgeToPolyline[e]+1;
                 }
             }
 
@@ -184,7 +186,118 @@ namespace sharp_feature
             computeKMeansPatches(surfaceMesh);
             computeOptimalPoint(surfaceMesh);
         }
-        void optimizePoints(const Mesh& surfaceMesh)
+        void noisePolyLines(const Mesh& surfaceMesh) {
+            Tree tree(faces(surfaceMesh).first, faces(surfaceMesh).second, surfaceMesh);
+            auto getClosestPointFace = [&](const Point &queryPt, Mesh::Face_index &faceDesc) -> int {
+                // Get the query point
+
+                // Find closest point on the mesh and the face it lies on
+                auto closest = tree.closest_point_and_primitive(queryPt);
+                faceDesc = closest.second;
+
+                FT min_length = FT(FLT_MAX);
+                int closestID = -1;
+
+                // Iterate over the vertices of the closest face
+                for (auto vd: vertices_around_face(surfaceMesh.halfedge(faceDesc), surfaceMesh)) {
+                    int vid = static_cast<int>(vd);  // vertex index
+                    K::Vector_3 diff(queryPt, surfaceMesh.point(vd));
+                    FT sq_dist = diff.squared_length();
+
+                    if (sq_dist < min_length) {
+                        min_length = sq_dist;
+                        closestID = vid;
+                    }
+                }
+
+                return closestID;
+            };
+            std::vector<Mesh::Face_index> supportingFaces;
+            for (auto &point: polylines.points) {
+                Mesh::Face_index supportingFace;
+                int closest = getClosestPointFace(point, supportingFace);
+                supportingFaces.push_back(supportingFace);
+            }
+            auto computeCentroid = [&](Mesh::Face_index startFace) {
+                auto h = surfaceMesh.halfedge(startFace);
+
+                Point p0 = surfaceMesh.point(source(h, surfaceMesh));
+                Point p1 = surfaceMesh.point(target(h, surfaceMesh));
+                Point p2 = surfaceMesh.point(target(next(h, surfaceMesh), surfaceMesh));
+
+                Point p = CGAL::centroid(p0, p1, p2);
+                return p;
+            };
+            for(auto &l : polylines.lines)
+            {
+                for(int i = 0 ; i < l.size()-1;i++)
+                {
+                    auto& point = polylines.points[l[i]];
+                    auto point2 = polylines.points[l[i+1]];
+                    auto n_ = point2-point;
+                    Vector n = n_ / std::sqrt(n_.squared_length());
+                    //point += 0.25*n;
+                    point = computeCentroid(Mesh::Face_index (supportingFaces[l[i]]));
+                }
+            }
+
+        }
+        void optimizePoints(const Mesh& surfaceMesh) {
+            Tree tree(faces(surfaceMesh).first, faces(surfaceMesh).second, surfaceMesh);
+            auto getClosestPointFace = [&](const Point &queryPt, Mesh::Face_index &faceDesc) -> int {
+                // Get the query point
+
+                // Find closest point on the mesh and the face it lies on
+                auto closest = tree.closest_point_and_primitive(queryPt);
+                faceDesc = closest.second;
+
+                FT min_length = FT(FLT_MAX);
+                int closestID = -1;
+
+                // Iterate over the vertices of the closest face
+                for (auto vd: vertices_around_face(surfaceMesh.halfedge(faceDesc), surfaceMesh)) {
+                    int vid = static_cast<int>(vd);  // vertex index
+                    K::Vector_3 diff(queryPt, surfaceMesh.point(vd));
+                    FT sq_dist = diff.squared_length();
+
+                    if (sq_dist < min_length) {
+                        min_length = sq_dist;
+                        closestID = vid;
+                    }
+                }
+
+                return closestID;
+            };
+            std::vector<Mesh::Face_index> supportingFaces;
+            for (auto &point: polylines.points) {
+                Mesh::Face_index supportingFace;
+                int closest = getClosestPointFace(point, supportingFace);
+                supportingFaces.push_back(supportingFace);
+            }
+            float deltaXY = 0.25f;
+            int steps = 1;
+            optimizer = SurfaceOptimizer(surfaceMesh);
+            optimizer.parameters.deltaXY = deltaXY;
+            optimizer.max_iteration = maxIteration;
+            size_t id = 0;
+
+            for(auto& point : polylines.points)
+            {
+                //std::cout<<"Point ID "<< id <<"\n";
+                if(id != 123 )
+                {
+                    id++;
+                    continue;
+                }
+
+                auto startFace = supportingFaces[id];
+                optimizer.optimize(point, optimalPoints[id], startFace);
+
+                id++;
+            }
+
+        }
+        void optimizePoints_old(const Mesh& surfaceMesh)
         {
             Tree tree(faces(surfaceMesh).first, faces(surfaceMesh).second, surfaceMesh);
             auto getClosestPointFace = [&](const Point& queryPt, Mesh::Face_index& faceDesc) -> int
@@ -221,27 +334,70 @@ namespace sharp_feature
                 int closest = getClosestPointFace(point, supportingFace);
                 supportingFaces.push_back(supportingFace);
             }
-            float deltaXY = 0.025f;
+            float deltaXY = 0.1f;
             int steps = 1;
-            optimizer = Optimizer(surfaceMesh);
+            optimizer = SurfaceOptimizer(surfaceMesh);
             optimizer.parameters.deltaXY = deltaXY;
             optimizer.max_iteration = steps;
             size_t id = 0;
             for(auto& point : polylines.points)
             {
+
+
+                auto point2 = id == 0 ? polylines.points[1] : polylines.points[id -1];
+                auto n_ = point-point2;
+                Vector n = n_ / std::sqrt(n_.squared_length());
+                Vector t;
+                if (std::abs(n.x()) < 0.9)
+                    t = Vector(1, 0, 0);
+                else
+                    t = Vector(0, 1, 0);
+
+                // First tangent
+                Vector u = CGAL::cross_product(n, t);
+                u = u / std::sqrt(u.squared_length());
+
+                // Second tangent
+                Vector v = CGAL::cross_product(n, u);
+                point = point + 0.1*u;
+
+                /*std::vector<Point> debugOpti;
+                point = surfaceMesh.point(Mesh::Vertex_index (30));
+                debugOpti.push_back(point);
+                supportingFaces[id] = Mesh::Face_index (55);*/
                 auto startFace = supportingFaces[id];
-                optimizer.optimize(point, optimalPoints[id], startFace);
+                //optimizer.optimizeUV(point, optimalPoints[id], startFace);
+                /*debugOpti.push_back(optimalPoints[id]);
+                debugOpti.push_back(point);
                 //processed[id] = 1;
+                auto pcl = polyscope::registerPointCloud("debugOpti", debugOpti);
+                pcl->resetTransform();
+
+                {
+                    auto pcl = polyscope::registerPointCloud("gradients", optimizer.gradients);
+                    pcl->resetTransform();
+                }
+                {
+                    auto pcl = polyscope::registerPointCloud("debugPath", optimizer.debugPath);
+                    pcl->resetTransform();
+                }*/
                 std::cout<<"Optimization id "<<id<<"\n";
+
+
+
+
+
                 id++;
             }
         }
+        int maxIteration=2;
         std::vector<std::vector<int>> labelFaces;
         std::vector<std::vector<Mesh::Face_index >> faceNeighbors;
         std::vector<int> vertexDegree;
         std::vector<Point> optimalPoints;
         std::vector<std::vector<Point>> planeCentroids;
         std::vector<std::vector<Vector >> planeNormals;
+        std::vector<double> edgeFrontiers;
     private:
         [[nodiscard]] static Point computeCentroid(const Mesh& sm, const CGAL::SM_Face_index& face)
         {
@@ -431,9 +587,14 @@ namespace sharp_feature
                 return true;
             };
             for (const auto &vID: sm.vertices()) {
+                std::unordered_set<size_t > allowedBoundary;
                 std::queue<ElementQ> q;
                 std::unordered_set<Mesh::Face_index> visited;
                 for (const auto &h: CGAL::halfedges_around_target(sm.halfedge(vID), sm)) {
+
+                    auto e = sm.edge(h);
+                    if(edgeToPolyline.contains(e))
+                        allowedBoundary.insert(edgeToPolyline.at(e));
                     const auto &vn = sm.source(h);
                     const auto &fn = sm.face(h);
                     if(fn == Mesh::null_face()) continue;
@@ -454,6 +615,9 @@ namespace sharp_feature
                         if(fn == Mesh::null_face()) continue;
                         if (visited.contains(fn))continue;
                         if (!checkFaceCondition(maxRadius, fn, vID)) continue;
+                        auto e = sm.edge(h);
+                        if(edgeToPolyline.contains(e))
+                            if(!allowedBoundary.contains(edgeToPolyline.at(e))) continue;
                         visited.insert(fn);
                         q.push({fn, current.depth + 1});
                         faceNeighbors[vID].push_back(fn);
@@ -462,6 +626,10 @@ namespace sharp_feature
 
                 }
             }
+        }
+        void computePatches(const Mesh& surfaceMesh)
+        {
+
         }
         void computeKMeansPatches(const Mesh& surfaceMesh)
         {
@@ -568,6 +736,7 @@ namespace sharp_feature
             };
             std::vector<std::vector<Mesh::Vertex_index>> all_paths;
 
+            size_t idLine = 0;
             for (const auto& seq : candidates)
             {
                 std::vector<Mesh::Vertex_index> full_path;
@@ -655,6 +824,7 @@ namespace sharp_feature
                         current = pred[current];
 
                         segmentHE.push_back(currentHE);
+                        edgeToPolyline[surfaceMesh.edge(currentHE)] = idLine;
                     }
 
                     segment.push_back(source);
@@ -672,14 +842,16 @@ namespace sharp_feature
                 }
                 segmentHEALL.push_back(full_path_HE);
                 all_paths.push_back(full_path);
+                idLine++;
             }
             //return all_paths;
         }
         std::unordered_set <size_t> corners;
         Polylines<Point> polylines;
         std::unordered_map<int, std::unordered_map<int , std::unordered_set<int >>> cornerPatches;
-        std::vector<double> edgeFrontiers;
         std::vector<int> halfEdgeFrontier;
+
+        std::unordered_map<Mesh::Edge_index , size_t> edgeToPolyline;
 
 
 
@@ -689,11 +861,11 @@ namespace sharp_feature
 
 
         float maxRadius = 3.;
-        int maxDepth = 2;
+        int maxDepth = 3;
         std::vector<std::vector<Vector>> centroidsVec;
         std::vector<std::vector<Vector>> centroidsPos;
 
-        Optimizer optimizer;
+        SurfaceOptimizer optimizer;
 
     };
 };

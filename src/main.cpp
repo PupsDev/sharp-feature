@@ -11,7 +11,7 @@
 #include "polyscope/curve_network.h"
 #include "polyscope/point_cloud.h"
 #include "polyscope/surface_mesh.h"
-
+#include <random>
 // Your function
 #pragma warning( pop )
 #include <iostream>
@@ -102,6 +102,30 @@ void callback() {
         openMesh(fileDialog.GetSelected().string());
         fileDialog.ClearSelected();
     }
+    if(ImGui::Button("Add Noise")) {
+        std::mt19937 rng(std::random_device{}());
+        float sigma = 0.01;
+        std::normal_distribution<double> noise(0.0, sigma);
+
+        for (auto v : surfaceMesh.vertices())
+        {
+            Point p = surfaceMesh.point(v);
+
+            surfaceMesh.point(v) = Point(
+                    p.x() + noise(rng),
+                    p.y() + noise(rng),
+                    p.z() + noise(rng)
+            );
+        }
+        export_surface_mesh_to_vectors<Point>(surfaceMesh, vertexPositions, triFaces);
+        polyscope::removeAllStructures();
+        polyscope::removeStructure(coolMeshName);
+        auto cgalMesh = polyscope::registerSurfaceMesh(coolMeshName, vertexPositions, triFaces);
+        cgalMesh->setEdgeWidth(0.7);
+        cgalMesh->resetTransform();
+
+        sharp_feature::surfaceMesh = surfaceMesh;
+    }
     sharp_feature::displayInterface();
     ImGui::PopItemWidth();
 }
@@ -115,20 +139,30 @@ int main(int argc, char **argv) {
     // Initialize polyscope
     polyscope::init();
     polyscope::options::groundPlaneMode = polyscope::GroundPlaneMode::None;
-    filePath = std::string("D://library//SharpEdgeSmall//data//cubesmooth2.obj");
+    filePath = std::string("D:\\library\\SharpEdgeSmall\\data\\cube3.obj");
 
     fileDialog.SetTitle("open mesh");
     fileDialog.SetDirectory(filePath);
     fileDialog.SetTypeFilters({ ".obj", ".off", ".inr" });
 
     coolMeshName = polyscope::guessNiceNameFromPath(filePath);
-    //openMesh(filePath);
 
-    std::string testPath("D://Thesis//Ange//SharpFeatureRelease//test_data//cube.obj");
+    bool test = false;
+    if(test)
+    {
+        //std::string testPath("D://Thesis//Ange//SharpFeatureRelease//test_data//cube.obj");
+        std::string testPath("D://library//cube1.obj");
+        openMesh(testPath);
+        filePath = testPath;
+        test_graph_optimizer::test(surfaceMesh);
 
-    openMesh(testPath);
-    filePath = testPath;
-    test_graph_optimizer::test(surfaceMesh);
+    }
+    else
+    {
+        //filePath = std::string("D://library//cube1.obj");
+        openMesh(filePath);
+    }
+
 
     // Add the callback
     polyscope::state::userCallback = callback;

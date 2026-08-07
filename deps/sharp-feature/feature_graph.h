@@ -241,7 +241,8 @@ namespace sharp_feature
                     auto element = GraphElement<UserType>();
                     element.id = vertexId++;
                     element.position =centroid;
-                    element.weight = centroidMetric;
+                    //element.weight = 0;//centroidMetric;
+                    element.weight = 0;//centroidMetric;
                     element.border = false;
                     element.type = GraphElementType::SURFEL;
                     graph[surfelElement] = element;

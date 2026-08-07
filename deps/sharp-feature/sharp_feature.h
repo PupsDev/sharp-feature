@@ -14,6 +14,8 @@ namespace sharp_feature
         float sizeCorner = 0.00100;
         float sizePoint = 0.00100;
         float sizeLine = 0.00100;
+
+        int maxIteration = 1;
     };
 
     template<typename UserType>
@@ -26,6 +28,7 @@ namespace sharp_feature
         std::vector<std::vector<int>> featureGraph;
 
         Polylines<Point> polylines;
+        std::vector<double> edgeScalar;
     };
     class SharpFeature
     {
@@ -154,14 +157,14 @@ namespace sharp_feature
                 e.second = featureMetric.computeSharpMeasureVertex(e.first, surfaceMesh, featureMetricParameters);
                 subPoint.push_back(newMesh.point(getMidPoint(surfaceMesh.halfedge(e.first))));
             }
-            auto subPoints  = polyscope::registerPointCloud("subPoints", subPoint);
+            /*auto subPoints  = polyscope::registerPointCloud("subPoints", subPoint);
             subPoints->resetTransform();
 
             std::vector<glm::vec3> vertexPositions;
             std::vector<std::vector<size_t>> triFaces;
             export_surface_mesh_to_vectors(newMesh, vertexPositions, triFaces);
             auto sub = polyscope::registerSurfaceMesh("sub", vertexPositions, triFaces);
-            sub->resetTransform();
+            sub->resetTransform();*/
         }
         void computeInitialGraph()
         {
@@ -189,7 +192,8 @@ namespace sharp_feature
             std::vector<std::array<size_t, 2>> edges;
             std::vector<double> metrics;
             featureGraph.exportGraph(points, edges, metrics);
-            auto curveSimplified = polyscope::registerCurveNetwork("feature graph simplified", points, edges);
+
+           /* auto curveSimplified = polyscope::registerCurveNetwork("feature graph simplified", points, edges);
             curveSimplified->resetTransform();
             curveSimplified->setRadius(sharpFeatureParameters.sizeLine);
 
@@ -197,6 +201,7 @@ namespace sharp_feature
                 auto pcl = polyscope::registerPointCloud("feature_graph_points", points);
                 pcl->resetTransform();
             }
+            */
 
             featureGraph.exportGraphSimple(persistentValues.featurePoint, persistentValues.featureGraph);
         }
@@ -219,10 +224,18 @@ namespace sharp_feature
         {
             //graphOptimizer.optimizePolyLines();
             graphOptimizer.computeFacePatches(surfaceMesh);
+            persistentValues.edgeScalar = graphOptimizer.edgeFrontiers;
 
+        }
+        void noisePolyLines()
+        {
+            graphOptimizer.noisePolyLines(surfaceMesh);
+            persistentValues.polylines = graphOptimizer.getPolyLines();
         }
         void optimizePolyLines()
         {
+
+            graphOptimizer.maxIteration = sharpFeatureParameters.maxIteration;
             graphOptimizer.optimizePoints(surfaceMesh);
             persistentValues.polylines = graphOptimizer.getPolyLines();
         }
